@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import pytz
 from datetime import datetime
 import re
 from urllib.parse import urlparse
@@ -9,6 +10,7 @@ import streamlit.components.v1 as components
 # --- [0. 설정 정보] ---
 SHEET_ID = "1nf0XEDSj5kc0k29pWKaCa345aUG0-3RmofWqd4bRZ9M"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit"
+ADMIN_PASSWORD = "plave123"  # 관리자 비밀번호
 
 # 1. 페이지 설정
 st.set_page_config(page_title="PLAVE PLLI 투표정보", page_icon="💙💜🩷❤️🖤", layout="wide")
@@ -16,28 +18,59 @@ st.set_page_config(page_title="PLAVE PLLI 투표정보", page_icon="💙💜🩷
 # 2. 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 3. 디자인 CSS
+# 3. 디자인 CSS (간격 최적화 반영)
 st.markdown("""
     <style>
+    /* 기본 배경 및 폰트 */
     .stApp { background-color: #0E1117; color: #FFFFFF; font-family: 'Pretendard', sans-serif; }
+    
+    /* 사이드바 디자인 및 버튼 간격 */
     section[data-testid="stSidebar"] { background-color: #161B22 !important; border-right: 1px solid #30363D; }
-    div[data-testid="stSidebarUserContent"] label { background-color: #21262D; border-radius: 12px !important; color: #C9D1D9 !important; padding: 15px 20px !important; }
+    div[data-testid="stSidebarUserContent"] label { 
+        background-color: #21262D; 
+        border-radius: 12px !important; 
+        color: #C9D1D9 !important; 
+        padding: 15px 20px !important;
+        margin-bottom: 15px !important; /* [개선] 사이드바 메뉴 간 여백 추가 */
+    }
     div[data-testid="stSidebarUserContent"] div[aria-checked="true"] label { background-color: #A29BFE !important; color: #000000 !important; font-weight: bold !important; }
-    .main-title { color: #FFFFFF; text-shadow: 0px 0px 15px rgba(162, 155, 254, 0.6); text-align: center; font-size: 2.5rem; font-weight: 800; margin-bottom: 30px; }
-    .tweet-card { background-color: #1E2330; border-radius: 16px; padding: 24px; margin-bottom: 24px; border-left: 5px solid #3E4556; transition: transform 0.2s; }
+    
+    /* 메인 타이틀 */
+    .main-title { color: #FFFFFF; text-shadow: 0px 0px 15px rgba(162, 155, 254, 0.6); text-align: center; font-size: 2.5rem; font-weight: 800; margin-bottom: 40px; }
+    
+    /* 투표 정보 카드 간격 */
+    .tweet-card { 
+        background-color: #1E2330; 
+        border-radius: 16px; 
+        padding: 24px; 
+        margin-bottom: 35px !important; /* [개선] 카드 간 수직 여백 확대 */
+        border-left: 5px solid #3E4556; 
+        transition: transform 0.2s; 
+    }
+    
+    /* 라디오 섹션 사이의 공간 및 구분선 */
+    .radio-spacer { 
+        margin-top: 25px;
+        margin-bottom: 55px; /* [개선] 방송사 섹션 사이 간격 확실하게 구분 */
+        border-bottom: 1px solid #30363D; 
+        padding-bottom: 30px;
+    }
+    
+    /* 일반 요소 간격 */
+    .stElementContainer { margin-bottom: 25px !important; }
+    
     .category-tag { padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; }
-    .importance-tag { background-color: #FFEAA7; color: #000000; padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; margin-left: 5px; }
     .d-day-tag { float: right; background-color: #FF5E57; color: white; padding: 4px 14px; border-radius: 50px; font-size: 0.9rem; font-weight: 800; }
-    .radio-box { background-color: #2D3436; padding: 20px; border-radius: 16px; border-left: 5px solid #FFEAA7; margin-bottom: 25px; }
+    .radio-box { background-color: #2D3436; padding: 25px; border-radius: 16px; border-left: 5px solid #FFEAA7; margin-bottom: 40px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 이미지 클릭 시 크게 보기 (다이얼로그)
+# 이미지 클릭 다이얼로그
 @st.dialog("이미지 크게 보기", width="large")
 def show_image(img_url):
     st.image(img_url, use_container_width=True)
 
-# 4. 데이터 처리 함수
+# 데이터 처리 함수
 def process_data(df):
     processed_rows = []
     for _, row in df.iterrows():
@@ -71,7 +104,7 @@ def process_data(df):
         })
     return pd.DataFrame(processed_rows)
 
-# 5. 사이드바 메뉴
+# 사이드바
 with st.sidebar:
     st.markdown("<h2 style='text-align:center; color:#A29BFE;'>PLLI CONNECT</h2>", unsafe_allow_html=True)
     menu = st.radio("메뉴 이동", ["📊 투표/광고 보드", "📻 라디오 상시 신청", "💡 투표 팁 & 가이드", "💬 플리 커뮤니티"], label_visibility="collapsed")
@@ -84,12 +117,21 @@ if menu == "📊 투표/광고 보드":
         raw_df = conn.read(spreadsheet=SHEET_URL, worksheet="Sheet1")
         if not raw_df.empty:
             df = process_data(raw_df)
-            
-            # 🔥 오늘 마감 요약 알림창
             today_str = datetime.now().strftime('%Y-%m-%d')
             today_deadlines = df[df['end_date'] == today_str]
             if not today_deadlines.empty:
                 st.error(f"⚠️ **오늘 마감!** ({len(today_deadlines)}건): {', '.join(today_deadlines['text'].str[:10] + '...')}")
+
+            # 관리자 도구
+            with st.expander("🛠️ 관리자 도구 (대량 등록 / 수정 / 삭제)"):
+                admin_pw = st.text_input("관리자 비밀번호", type="password")
+                if admin_pw == ADMIN_PASSWORD:
+                    st.markdown("#### 📝 기존 데이터 관리")
+                    edited_df = st.data_editor(raw_df, num_rows="dynamic")
+                    if st.button("변경사항 저장하기 💾"):
+                        conn.update(spreadsheet=SHEET_URL, worksheet="Sheet1", data=edited_df)
+                        st.success("반영되었습니다!")
+                        st.rerun()
 
             # 투표 등록 폼
             with st.expander("➕ 새로운 투표 정보 등록하기"):
@@ -101,9 +143,9 @@ if menu == "📊 투표/광고 보드":
                     if st.form_submit_button("등록하기 💙"):
                         new_data = pd.DataFrame([{"category": f_cat, "importance": 1, "text": f_text, "start_date": today_str, "end_date": f_end.strftime('%Y-%m-%d'), "images": f_img}])
                         conn.update(spreadsheet=SHEET_URL, worksheet="Sheet1", data=pd.concat([raw_df, new_data], ignore_index=True))
-                        st.success("등록되었습니다! 새로고침 해주세요.")
+                        st.success("등록되었습니다!")
+                        st.rerun()
 
-            # 보드 출력
             cols = st.columns(2)
             for idx, row in df.sort_values(by=['is_expired', 'd_day_val']).reset_index().iterrows():
                 with cols[idx % 2]:
@@ -118,24 +160,23 @@ if menu == "📊 투표/광고 보드":
                     if row['link']: st.link_button("🔗 참여 링크 이동", row['link'], use_container_width=True)
     except Exception as e: st.error(f"데이터 로드 실패: {e}")
 
-# --- [메뉴 2: 라디오 상시 신청] ---
+# --- [메뉴 2: 라디오 상시 신청 (여백 확대)] ---
 elif menu == "📻 라디오 상시 신청":
     st.markdown('<div class="radio-box"><h2>📻 라디오 신청 가이드</h2><p>국내외 라디오에 플레이브의 음악을 들려주세요! 💙</p></div>', unsafe_allow_html=True)
     
-    day_tabs = st.tabs(["🇰🇷 KBS 쿨FM", "🇸🇰 SBS 파워FM", "🌐 해외 라디오", "📱 문자 번호"])
-    
-    with day_tabs[0]:
-        st.markdown("### 💙 KBS 쿨FM (2FM) 상세 신청")
+    st.markdown('<div class="radio-spacer">', unsafe_allow_html=True)
+    with st.expander("💙 KBS 쿨FM (2FM) 신청 게시판 열기"):
         k_cols = st.columns(2)
         with k_cols[0]:
             st.link_button("💋 키라더 (일요일)", "https://program.kbs.co.kr/2fm/radio/hanhaekiss/mobile/board.html?smenu=ba2c4f&bbs_loc=R2025-0082-03-761603,list,none,1,0", use_container_width=True)
             st.link_button("🎮 놀초대 [화/목]", "https://program.kbs.co.kr/2fm/radio/hanhaekiss/mobile/board.html?smenu=66d014&bbs_loc=R2025-0082-03-789244,list,none,1,0", use_container_width=True)
         with k_cols[1]:
-            st.link_button("🎧 볼륨을 높여요 (금/토/일)", "https://program.kbs.co.kr/2fm/radio/hyojung_volume/mobile/board.html", use_container_width=True)
+            st.link_button("🎧 볼륨을 높여요", "https://program.kbs.co.kr/2fm/radio/hyojung_volume/mobile/board.html", use_container_width=True)
             st.link_button("☀️ 이은지의 가요광장", "https://program.kbs.co.kr/2fm/radio/ejgayo/mobile/board.html", use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    with day_tabs[1]:
-        st.markdown("### 🧡 SBS 파워FM 주요 게시판")
+    st.markdown('<div class="radio-spacer">', unsafe_allow_html=True)
+    with st.expander("🧡 SBS 파워FM 신청 게시판 열기"):
         s_cols = st.columns(2)
         with s_cols[0]:
             st.link_button("🎙️ 두시탈출 컬투쇼", "https://m.programs.sbs.co.kr/radio/cultwoshow/boards/58047", use_container_width=True)
@@ -143,15 +184,46 @@ elif menu == "📻 라디오 상시 신청":
         with s_cols[1]:
             st.link_button("🎸 박소현의 러브게임", "https://m.programs.sbs.co.kr/radio/lovegame/boards/57679", use_container_width=True)
             st.link_button("⚽ 배성재의 텐", "https://m.programs.sbs.co.kr/radio/ten/boards/57950", use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    with day_tabs[2]:
-        st.markdown("### 🌐 글로벌 라디오 신청")
-        st.link_button("🍎 [NYC] 뉴욕 주말 요청", "https://docs.google.com/forms/d/e/1FAIpQLSfyVYf-rss5jZ0uA6RHIkb-Im180whM7I_U98HLnpu3w1C4cw/viewform", use_container_width=True)
-        st.info("영문 문구: `I would like to request 제목 by PLAVE`")
+# 3. 해외 라디오 섹션 (신규 추가!)
+    st.markdown('<div class="radio-spacer">', unsafe_allow_html=True)
+    with st.expander("🌐 해외 라디오 실시간 요청 (NYC / Global)"):
+        
+        # 🕒 실시간 시차 위젯 추가
+        st.markdown("#### 🕒 Global Time Check")
+        t_col1, t_col2 = st.columns(2)
+        
+        # 한국 시간
+        tz_kr = pytz.timezone('Asia/Seoul')
+        now_kr = datetime.now(tz_kr).strftime('%m/%d %H:%M')
+        t_col1.metric("🇰🇷 KOREA (Seoul)", now_kr)
+        
+        # 뉴욕 시간
+        tz_ny = pytz.timezone('America/New_York')
+        now_ny = datetime.now(tz_ny).strftime('%m/%d %H:%M')
+        t_col2.metric("🇺🇸 USA (New York)", now_ny, delta="-14h (시차)", delta_color="inverse")
+        
+        st.divider()
+        
+        st.info("💡 **영문 요청 문구:** `I would like to request [곡제목] by PLAVE` (복사해서 사용하세요!)")
+        h_cols = st.columns(2)
+        with h_cols[0]:
+            st.markdown("#### 🇺🇸 USA / NYC")
+            st.link_button("🍎 NYC 주말 실시간 요청", "https://docs.google.com/forms/d/e/1FAIpQLSfyVYf-rss5jZ0uA6RHIkb-Im180whM7I_U98HLnpu3w1C4cw/viewform", use_container_width=True)
+            st.link_button("🍎 NYC 토요일 방송 요청", "https://docs.google.com/forms/d/e/1FAIpQLSe1yaIX9vTlkW8uVFqkF4ElCrsJ4R131b5lOQx7PlmwzYIaPg/alreadyresponded", use_container_width=True)
+            st.link_button("📻 WYYT 106.3 Request", "http://wyyt1063.com/request", use_container_width=True)
+        with h_cols[1]:
+            st.markdown("#### 🌍 Global / Japan")
+            st.link_button("🇺🇸 Only Hits (Contact)", "https://onlyhit.us/en/contact/", use_container_width=True)
+            st.link_button("🇨🇦 Hot 106 (Canada)", "http://hot106.cgrmedia.ca/request", use_container_width=True)
+            st.link_button("🇯🇵 M-ON! TV/Radio", "http://m-on.jp/request/", use_container_width=True)
+            st.link_button("📻 ECA Radio Request", "https://ecaradio2.weebly.com/song-requests.html", use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    with day_tabs[3]:
-        st.success("### 📱 문자 신청 번호\n- **KBS**: #8910 / **SBS**: #1077 / **MBC**: #8000")
+    # 4. 문자 번호 안내
+    st.success("### 📱 국내 문자 신청 번호\n- **KBS**: #8910 / **SBS**: #1077 / **MBC**: #8000")
 
-# --- [메뉴 3 & 4] ---
-elif menu == "💡 투표 팁 & 가이드": st.write("투표 앱 가이드를 준비 중입니다.")
-elif menu == "💬 플리 커뮤니티": st.write("자유 게시판 공간입니다.")
+# --- [기타 메뉴] ---
+elif menu == "💡 투표 팁 & 가이드": st.write("투표 앱 가이드 정보가 업데이트될 예정입니다.")
+elif menu == "💬 플리 커뮤니티": st.write("플리님들의 소중한 한마디를 남겨주세요. 💙")
