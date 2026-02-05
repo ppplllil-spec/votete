@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 st.set_page_config(page_title="PLAVE PLLI TRACKER", page_icon="💙💜🩷❤️🖤", layout="wide")
 
 # 2. 구글 시트 연결 (본인의 시트 ID 및 탭 이름 확인 필수)
-SHEET_ID = "1fO9eZpzP8orgwRkH0FiwO1ZAQmvaKJqpMmophIP_8Ts"
+SHEET_ID = "1nf0XEDSj5kc0k29pWKaCa345aUG0-3RmofWqd4bRZ9M"
 # 데이터 탭 (Sheet1) 및 커뮤니티 탭 (comments)
 DATA_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Sheet1"
 COMM_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=comments"
