@@ -8,7 +8,8 @@ import streamlit.components.v1 as components
 
 # --- [0. 설정 정보] ---
 SHEET_ID = "1nf0XEDSj5kc0k29pWKaCa345aUG0-3RmofWqd4bRZ9M"
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit#gid=0"
+# [수정] PermissionError 방지를 위해 gid 부분을 제거한 순수 URL을 사용합니다.
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit"
 
 # 1. 페이지 설정
 st.set_page_config(page_title="PLAVE PLLI 투표정보", page_icon="💙💜🩷❤️🖤", layout="wide")
@@ -54,6 +55,7 @@ def process_data(df):
         elif any(k in raw_text for k in ["밤비", "BAMBY", "🩷"]): m_color = "#FFB7D5"
         elif any(k in raw_text for k in ["은호", "EUNHO", "❤️"]): m_color = "#FF8E8E"
 
+        # 링크 및 카테고리 자동 추출
         found_links = re.findall(r'(https?://\S+)', raw_text)
         final_link = row['link'] if pd.notna(row['link']) and str(row['link']).strip() != "" else (found_links[0] if found_links else None)
         
@@ -64,6 +66,7 @@ def process_data(df):
             elif any(k in raw_text for k in ["광고", "시안"]): cat = "🎨 광고시안"
             else: cat = "🗳️ 일반/음방"
 
+        # 중요도 NaN 에러 방지 (비어있으면 1로 처리)
         imp = 1
         try:
             if pd.notna(row['importance']): imp = int(float(row['importance']))
@@ -104,10 +107,15 @@ if menu == "📊 투표/광고 보드":
                 if not f_text:
                     st.warning("내용을 입력해주세요.")
                 else:
-                    existing = conn.read(spreadsheet=SHEET_URL, worksheet="Sheet1", usecols=list(range(7)))
-                    new_row = pd.DataFrame([{"category": f_cat if f_cat != "자동 분류" else "", "importance": f_imp, "text": f_text, "start_date": datetime.now().strftime('%Y-%m-%d'), "end_date": f_end.strftime('%Y-%m-%d'), "link": "", "images": f_img}])
-                    conn.update(spreadsheet=SHEET_URL, worksheet="Sheet1", data=pd.concat([existing, new_row], ignore_index=True))
-                    st.success("등록되었습니다! 화면을 새로고침(F5) 해주세요.")
+                    try:
+                        # [핵심] spreadsheet=SHEET_URL 인자를 명시해야 합니다.
+                        existing = conn.read(spreadsheet=SHEET_URL, worksheet="Sheet1", usecols=list(range(7)))
+                        new_row = pd.DataFrame([{"category": f_cat if f_cat != "자동 분류" else "", "importance": f_imp, "text": f_text, "start_date": datetime.now().strftime('%Y-%m-%d'), "end_date": f_end.strftime('%Y-%m-%d'), "link": "", "images": f_img}])
+                        updated_df = pd.concat([existing, new_row], ignore_index=True)
+                        conn.update(spreadsheet=SHEET_URL, worksheet="Sheet1", data=updated_df)
+                        st.success("등록되었습니다! 화면을 새로고침(F5) 해주세요.")
+                    except Exception as e:
+                        st.error(f"등록 실패: 시트 권한을 확인해주세요. ({e})")
 
     try:
         raw_df = conn.read(spreadsheet=SHEET_URL, worksheet="Sheet1", usecols=list(range(7)))
@@ -128,6 +136,7 @@ if menu == "📊 투표/광고 보드":
                             tweet_html = ""
                             if row['link'] and ("x.com" in row['link'] or "twitter.com" in row['link']):
                                 tweet_html = f'<blockquote class="twitter-tweet" data-theme="dark"><a href="{row["link"]}"></a></blockquote><script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>'
+                            
                             st.markdown(f"""
                                 <div class="tweet-card {'expired' if row['is_expired'] else ''}" style="{style}">
                                     <span class="category-tag" style="background-color:{row['color']}; color:{'#000' if row['color'] != '#333333' else '#fff'};">{row['category']}</span>
@@ -137,13 +146,14 @@ if menu == "📊 투표/광고 보드":
                                     <div style="color:#FDFDFD; line-height:1.7; font-size:1.05rem; white-space:pre-wrap; margin-bottom:10px;">{row['text']}</div>
                                 </div>
                             """, unsafe_allow_html=True)
+                            
                             if tweet_html: components.html(tweet_html, height=450, scrolling=True)
                             if row['link'] and not tweet_html:
                                 st.markdown(f"<a href='{row['link']}' target='_blank' class='link-container' style='border-left: 4px solid {row['color']}; text-decoration:none;'><span style='color:#A29BFE; font-weight:bold;'>🔗 참여 링크 이동</span></a>", unsafe_allow_html=True)
                             if pd.notna(row['images']) and str(row['images']).strip() != "":
                                 st.image(row['images'], use_container_width=True)
-            for i, cat in enumerate(["", "시상식", "생일", "🗳️|투표|음방", "광고|시안"]):
-                with tabs[i]: display_fn(df if i==0 else df[df['category'].str.contains(cat, na=False)])
+            for i, cat_name in enumerate(["", "시상식", "생일", "🗳️|투표|음방", "광고|시안"]):
+                with tabs[i]: display_fn(df if i==0 else df[df['category'].str.contains(cat_name, na=False)])
     except Exception as e: st.error(f"데이터 로드 실패: {e}")
 
 # --- [팁 및 커뮤니티 섹션] ---
@@ -151,14 +161,14 @@ elif menu == "💡 투표 팁 & 가이드":
     st.subheader("💡 앱별 재화 수급 및 투표 가이드")
     with st.expander("➕ 새로운 팁 직접 등록하기"):
         with st.form("tip_form", clear_on_submit=True):
-            title = st.text_input("팁 제목")
-            app = st.text_input("앱 이름")
-            content = st.text_area("공략 내용")
-            link = st.text_input("상세 링크")
+            t_title = st.text_input("팁 제목")
+            t_app = st.text_input("앱 이름")
+            t_content = st.text_area("공략 내용")
+            t_link = st.text_input("상세 링크")
             if st.form_submit_button("팁 등록하기"):
-                if title and content:
+                if t_title and t_content:
                     existing = conn.read(spreadsheet=SHEET_URL, worksheet="tips", usecols=list(range(4)))
-                    new_tip = pd.DataFrame([{"title": title, "app_name": app, "content": content, "link": link}])
+                    new_tip = pd.DataFrame([{"title": t_title, "app_name": t_app, "content": t_content, "link": t_link}])
                     conn.update(spreadsheet=SHEET_URL, worksheet="tips", data=pd.concat([existing, new_tip], ignore_index=True))
                     st.success("팁이 등록되었습니다!")
 
