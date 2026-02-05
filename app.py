@@ -4,45 +4,81 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 # 1. 페이지 설정
-st.set_page_config(page_title="PLAVE PLLI TRACKER", page_icon="💙💜🩷❤️🖤", layout="wide")
+st.set_page_config(page_title="PLAVE PLLI 투표정보", page_icon="💙💜🩷❤️🖤", layout="wide")
 
-# 2. 구글 시트 연결 (본인의 시트 ID 및 탭 이름 확인 필수)
+# 2. 구글 시트 연결 (수정된 ID 적용)
 SHEET_ID = "1nf0XEDSj5kc0k29pWKaCa345aUG0-3RmofWqd4bRZ9M"
-# 데이터 탭 (Sheet1) 및 커뮤니티 탭 (comments)
 DATA_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Sheet1"
 COMM_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=comments"
 
-# 3. 통합 디자인 CSS
+# 3. 통합 디자인 CSS (사이드바 및 레이아웃 강화)
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; font-family: 'Pretendard', sans-serif; }
-    .main-title { color: #FFFFFF; text-shadow: 0px 0px 15px rgba(162, 155, 254, 0.6); text-align: center; font-size: 2.5rem; font-weight: 800; margin-bottom: 20px; }
     
-    /* 보드 카드 스타일 */
-    .tweet-card { background-color: #1E2330; border: 1px solid #3E4556; border-radius: 16px; padding: 24px; margin-bottom: 24px; }
-    .tweet-card.expired { opacity: 0.4; filter: grayscale(50%); }
+    /* 사이드바 커스텀 */
+    section[data-testid="stSidebar"] {
+        background-color: #161B22 !important;
+        border-right: 1px solid #30363D;
+    }
+    
+    /* 메뉴 라디오 버튼 이쁘게 만들기 */
+    div[data-testid="stSidebarUserContent"] .stRadio > div {
+        gap: 10px;
+    }
+    div[data-testid="stSidebarUserContent"] label {
+        background-color: #21262D;
+        border: 1px solid #30363D;
+        padding: 15px 20px !important;
+        border-radius: 12px !important;
+        color: #C9D1D9 !important;
+        transition: all 0.3s ease;
+        width: 100%;
+    }
+    div[data-testid="stSidebarUserContent"] label:hover {
+        background-color: #30363D;
+        border-color: #A29BFE;
+    }
+    div[data-testid="stSidebarUserContent"] div[aria-checked="true"] label {
+        background-color: #A29BFE !important;
+        color: #000000 !important;
+        font-weight: bold !important;
+        border-color: #A29BFE !important;
+        box-shadow: 0 0 15px rgba(162, 155, 254, 0.4);
+    }
+    
+    /* 메인 타이틀 */
+    .main-title { 
+        color: #FFFFFF; 
+        text-shadow: 0px 0px 15px rgba(162, 155, 254, 0.6); 
+        text-align: center; 
+        font-size: 2.5rem; 
+        font-weight: 800; 
+        margin-bottom: 30px;
+        letter-spacing: -0.05em;
+    }
+
+    /* 카드 및 기타 스타일 유지 */
+    .tweet-card { background-color: #1E2330; border: 1px solid #3E4556; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
     .category-tag { background-color: #A29BFE; color: #000000; padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; }
-    .importance-tag { background-color: #FFEAA7; color: #000000; padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; margin-left: 5px; }
     .d-day-tag { float: right; background-color: #FF5E57; color: white; padding: 4px 14px; border-radius: 50px; font-size: 0.9rem; font-weight: 800; }
-    
-    /* 커뮤니티 스타일 */
-    .comment-box { background-color: #1E2330; border-radius: 12px; padding: 18px; margin-bottom: 12px; border-left: 6px solid #A29BFE; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
-    .nickname { color: #A29BFE; font-weight: bold; font-size: 1rem; }
-    .comment-text { color: #FDFDFD; margin-top: 8px; font-size: 1.05rem; white-space: pre-wrap; }
-    .timestamp { color: #636e72; font-size: 0.75rem; float: right; }
-    
-    /* 링크 컨테이너 */
-    .link-container { display: flex; align-items: center; background-color: #2D3436; padding: 12px; border-radius: 10px; margin-top: 15px; text-decoration: none !important; }
-    .app-icon { width: 22px; height: 22px; border-radius: 5px; margin-right: 12px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 4. 사이드바 메뉴 (섹션 분리)
+# 4. 사이드바 메뉴 (개선된 배치)
 with st.sidebar:
-    st.markdown("## 연결망")
-    menu = st.radio("메뉴 이동", ["📊 투표/광고 보드", "💬 플리 커뮤니티"], index=0)
+    st.markdown("<h2 style='text-align:center; color:#A29BFE;'>PLLI CONNECT</h2>", unsafe_allow_html=True)
+    st.write("")
+    # 라디오 버튼을 버튼 형태로 활용
+    menu = st.radio(
+        "이동할 메뉴를 선택하세요",
+        ["📊 투표/광고 보드", "💬 플리 커뮤니티"],
+        label_visibility="collapsed"
+    )
+    st.v_spacer(height=20)
     st.divider()
-    st.info("플리들이 직접 만드는 실시간 대시보드입니다.")
+    st.markdown("### 📢 공지사항")
+    st.caption("플리들이 직접 관리하는 실시간 대시보드입니다. 허위 정보 기재 시 삭제될 수 있습니다.")
 
 st.markdown(f"<h1 class='main-title'>PLAVE PLLI TRACKER</h1>", unsafe_allow_html=True)
 
