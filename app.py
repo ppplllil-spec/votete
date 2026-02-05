@@ -52,7 +52,6 @@ st.markdown("""
 with st.sidebar:
     st.markdown("<h2 style='text-align:center; color:#A29BFE;'>PLLI CONNECT</h2>", unsafe_allow_html=True)
     menu = st.radio("메뉴 이동", ["📊 투표/광고 보드", "💡 투표 팁 & 가이드", "💬 플리 커뮤니티"], label_visibility="collapsed")
-    st.write("")
     st.divider()
     st.caption("플리들이 직접 만드는 실시간 대시보드입니다.")
 
