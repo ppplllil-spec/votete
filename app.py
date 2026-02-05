@@ -75,7 +75,6 @@ with st.sidebar:
         ["📊 투표/광고 보드", "💬 플리 커뮤니티"],
         label_visibility="collapsed"
     )
-    st.v_spacer("")
     st.divider()
     st.markdown("### 📢 공지사항")
     st.caption("플리들이 직접 관리하는 실시간 대시보드입니다. 허위 정보 기재 시 삭제될 수 있습니다.")
