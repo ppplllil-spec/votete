@@ -3,18 +3,16 @@ import pandas as pd
 from datetime import datetime
 import re
 from urllib.parse import urlparse
+from streamlit_gsheets import GSheetsConnection
 
 # 1. 페이지 설정
 st.set_page_config(page_title="PLAVE PLLI 투표정보", page_icon="💙💜🩷❤️🖤", layout="wide")
 
-# 2. 구글 시트 연결
+# 2. 구글 시트 연결 설정
 SHEET_ID = "1nf0XEDSj5kc0k29pWKaCa345aUG0-3RmofWqd4bRZ9M"
-# range=A:G를 설정하여 시트 우측의 한글 가이드 설명(I열 이후)이 앱에 불러와지지 않도록 원천 차단합니다.
-DATA_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Sheet1&range=A:G"
-COMM_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=comments&range=A:C"
-TIPS_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=tips&range=A:D"
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 3. 디자인 CSS
+# 3. 디자인 CSS (기존 스타일 유지)
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; font-family: 'Pretendard', sans-serif; }
@@ -26,7 +24,6 @@ st.markdown("""
     }
     div[data-testid="stSidebarUserContent"] div[aria-checked="true"] label {
         background-color: #A29BFE !important; color: #000000 !important; font-weight: bold !important;
-        box-shadow: 0 0 15px rgba(162, 155, 254, 0.4);
     }
     .main-title { color: #FFFFFF; text-shadow: 0px 0px 15px rgba(162, 155, 254, 0.6); text-align: center; font-size: 2.5rem; font-weight: 800; margin-bottom: 30px; }
     .tweet-card { background-color: #1E2330; border: 1px solid #3E4556; border-radius: 16px; padding: 24px; margin-bottom: 24px; }
@@ -36,7 +33,6 @@ st.markdown("""
     .d-day-tag { float: right; background-color: #FF5E57; color: white; padding: 4px 14px; border-radius: 50px; font-size: 0.9rem; font-weight: 800; }
     .link-container { display: flex; align-items: center; background-color: #2D3436; padding: 12px; border-radius: 10px; margin-top: 15px; text-decoration: none !important; }
     .app-icon { width: 22px; height: 22px; border-radius: 5px; margin-right: 12px; }
-    .tip-content { background-color: #2D3436; padding: 20px; border-radius: 12px; line-height: 1.8; color: #FDFDFD; font-size: 1.05rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -44,31 +40,25 @@ st.markdown("""
 with st.sidebar:
     st.markdown("<h2 style='text-align:center; color:#A29BFE;'>PLLI CONNECT</h2>", unsafe_allow_html=True)
     menu = st.radio("메뉴 이동", ["📊 투표/광고 보드", "💡 투표 팁 & 가이드", "💬 플리 커뮤니티"], label_visibility="collapsed")
-    st.write("") # 에러가 났던 v_spacer 대신 안전한 공백 처리
     st.divider()
 
 st.markdown(f"<h1 class='main-title'>💙💜🩷❤️🖤 PLAVE PLLI 투표정보</h1>", unsafe_allow_html=True)
 
-# --- [자동 분류 및 데이터 처리 로직] ---
+# --- [공통 데이터 처리 함수] ---
 def process_data(df):
     processed_rows = []
     for _, row in df.iterrows():
         raw_text = str(row['text']) if pd.notna(row['text']) else ""
-        
-        # 1. 링크 추출
         found_links = re.findall(r'(https?://\S+)', raw_text)
         final_link = row['link'] if pd.notna(row['link']) and str(row['link']).strip() != "" else (found_links[0] if found_links else None)
         
-        # 2. 카테고리 자동 분류 (비어있을 경우 '일반'을 기본값으로)
         cat = row['category']
         if pd.isna(cat) or str(cat).strip() == "":
-            # 특정 키워드가 본문에 있을 때만 변경, 그 외엔 모두 '일반'
             if "시상식" in raw_text: cat = "🏆 시상식"
             elif "생일" in raw_text: cat = "🎂 생일"
             elif any(k in raw_text for k in ["광고", "시안"]): cat = "🎨 광고시안"
-            else: cat = "🗳️ 일반/음방"  # 기본값 설정
+            else: cat = "🗳️ 일반/음방"
 
-        # 3. D-Day 및 숫자 에러 방지 로직 (기존과 동일)
         def get_dday(date_str):
             try:
                 if pd.isna(date_str) or str(date_str).strip() == "": return "상시", 999, False
@@ -80,7 +70,6 @@ def process_data(df):
             except: return "정보없음", 999, False
 
         d_label, d_val, is_exp = get_dday(row['end_date'])
-        
         imp = 1
         try:
             if pd.notna(row['importance']): imp = int(float(row['importance']))
@@ -95,65 +84,97 @@ def process_data(df):
         })
     return pd.DataFrame(processed_rows)
 
-# --- [섹션 1: 보드 출력] ---
+# --- [섹션 1: 보드 출력 및 등록] ---
 if menu == "📊 투표/광고 보드":
-    try:
-        raw_df = pd.read_csv(DATA_URL)
-        if raw_df.empty:
-            st.info("시트에 데이터를 입력해주세요! 💙")
-        else:
-            df = process_data(raw_df)
-            sort_opt = st.segmented_control("정렬 방식", ["🔥 마감 임박순", "⭐ 중요도 순"], default="🔥 마감 임박순")
-            if sort_opt == "🔥 마감 임박순": df = df.sort_values(by=['is_expired', 'd_day_val'], ascending=[True, True])
-            else: df = df.sort_values(by=['is_expired', 'importance'], ascending=[True, False])
+    with st.expander("➕ 새로운 투표 정보 등록하기"):
+        with st.form("vote_form", clear_on_submit=True):
+            f_cat = st.selectbox("분류", ["자동 분류", "🏆 시상식", "🗳️ 일반/음방", "🎂 생일", "🎨 광고시안"])
+            f_imp = st.slider("중요도", 1, 3, 1)
+            f_text = st.text_area("내용 (문구를 통째로 붙여넣으세요)")
+            f_end = st.date_input("종료 날짜", value=datetime.now())
+            f_img = st.text_input("이미지 주소 (없으면 비워둠)")
+            submit_vote = st.form_submit_button("보드에 등록하기 💙")
+            
+            if submit_vote and f_text:
+                existing_data = conn.read(worksheet="Sheet1", usecols=list(range(7)))
+                new_row = pd.DataFrame([{
+                    "category": f_cat if f_cat != "자동 분류" else "",
+                    "importance": f_imp, "text": f_text,
+                    "start_date": datetime.now().strftime('%Y-%m-%d'),
+                    "end_date": f_end.strftime('%Y-%m-%d'),
+                    "link": "", "images": f_img
+                }])
+                updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+                conn.update(worksheet="Sheet1", data=updated_df)
+                st.success("등록되었습니다! 화면을 새로고침(F5) 해주세요.")
 
+    try:
+        raw_df = conn.read(worksheet="Sheet1", usecols=list(range(7)))
+        if not raw_df.empty:
+            df = process_data(raw_df)
+            sort_opt = st.segmented_control("정렬", ["🔥 마감순", "⭐ 중요도순"], default="🔥 마감순")
+            if sort_opt == "🔥 마감순": df = df.sort_values(by=['is_expired', 'd_day_val'], ascending=[True, True])
+            else: df = df.sort_values(by=['is_expired', 'importance'], ascending=[True, False])
+            
             tabs = st.tabs(["전체", "🏆 시상식", "🎂 생일", "🗳️ 일반/음방", "🎨 광고시안"])
-            def display_cards(data):
-                if data.empty: st.info("소식을 기다리고 있습니다. 💫")
+            def display(data):
+                if data.empty: st.info("소식이 없습니다. 💫")
                 else:
                     cols = st.columns(2)
                     for idx, row in data.reset_index().iterrows():
-                        icon_html = ""
-                        if row['link']:
-                            domain = urlparse(row['link']).netloc
-                            icon_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=64"
-                            icon_html = f"<img src='{icon_url}' class='app-icon'>"
                         with cols[idx % 2]:
                             st.markdown(f"""
                                 <div class="tweet-card {'expired' if row['is_expired'] else ''}">
                                     <span class="category-tag">{row['category']}</span>
                                     <span class="importance-tag">⭐ {row['importance']}</span>
                                     <span class="d-day-tag">{row['d_day_label']}</span>
-                                    <div style="font-size:0.85rem; color:#B2BEC3; margin:15px 0 5px 0;">🗓️ {row['start_date'] if pd.notna(row['start_date']) else '-'} ~ {row['end_date'] if pd.notna(row['end_date']) else '-'}</div>
+                                    <div style="font-size:0.85rem; color:#B2BEC3; margin:15px 0 5px 0;">🗓️ {row['start_date']} ~ {row['end_date']}</div>
                                     <div style="color:#FDFDFD; line-height:1.7; font-size:1.05rem; white-space:pre-wrap;">{row['text']}</div>
-                                    {"<a href='"+str(row['link'])+"' target='_blank' class='link-container'>" + icon_html + "<span style='color:#A29BFE; font-weight:bold;'>참여 링크로 이동</span></a>" if row['link'] else ""}
+                                    {"<a href='"+str(row['link'])+"' target='_blank' class='link-container'><span style='color:#A29BFE; font-weight:bold;'>참여 링크 이동</span></a>" if row['link'] else ""}
                                 </div>
                             """, unsafe_allow_html=True)
-                            if pd.notna(row['images']): st.image(row['images'], use_container_width=True)
-            with tabs[0]: display_cards(df)
-            with tabs[1]: display_cards(df[df['category'].str.contains('시상식', na=False)])
-            with tabs[2]: display_cards(df[df['category'].str.contains('생일', na=False)])
-            with tabs[3]: display_cards(df[df['category'].str.contains('🗳️|투표|음방', na=False)])
-            with tabs[4]: display_cards(df[df['category'].str.contains('광고|시안', na=False)])
-    except Exception as e: st.error(f"데이터 로드 실패: {e}")
+                            if pd.notna(row['images']) and str(row['images']).strip() != "": st.image(row['images'], use_container_width=True)
+            for i, cat_name in enumerate(["", "시상식", "생일", "🗳️|투표|음방", "광고|시안"]):
+                with tabs[i]: display(df if i==0 else df[df['category'].str.contains(cat_name, na=False)])
+    except: st.info("데이터를 불러오는 중입니다...")
 
-# (섹션 2, 3은 이전과 동일하게 유지 - 버튼 링크 gid는 알려주신 번호로 유지)
+# --- [섹션 2: 팁 등록] ---
 elif menu == "💡 투표 팁 & 가이드":
     st.subheader("💡 앱별 재화 수급 및 투표 가이드")
-    st.link_button("✍️ 팁 추가/수정하러 가기", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit?gid=1194006631#gid=1194006631")
-    try:
-        tips_df = pd.read_csv(TIPS_URL)
-        if not tips_df.empty:
-            for _, row in tips_df.iterrows():
-                with st.expander(f"[{row['app_name']}] {row['title']}"):
-                    st.markdown(f"<div class='tip-content'>{row['content']}</div>", unsafe_allow_html=True)
-    except: st.info("팁을 등록해주세요!")
+    with st.expander("➕ 새로운 팁 직접 등록하기"):
+        with st.form("tip_form", clear_on_submit=True):
+            t_title = st.text_input("팁 제목")
+            t_app = st.text_input("앱 이름")
+            t_content = st.text_area("공략 내용")
+            t_link = st.text_input("상세 링크")
+            if st.form_submit_button("팁 등록하기"):
+                existing_tips = conn.read(worksheet="tips", usecols=list(range(4)))
+                new_tip = pd.DataFrame([{"title": t_title, "app_name": t_app, "content": t_content, "link": t_link}])
+                conn.update(worksheet="tips", data=pd.concat([existing_tips, new_tip], ignore_index=True))
+                st.success("팁이 등록되었습니다!")
 
+    try:
+        tips = conn.read(worksheet="tips")
+        for _, row in tips.iterrows():
+            with st.expander(f"[{row['app_name']}] {row['title']}"):
+                st.write(row['content'])
+                if pd.notna(row['link']): st.link_button("상세보기", row['link'])
+    except: st.info("등록된 팁이 없습니다.")
+
+# --- [섹션 3: 커뮤니티 등록] ---
 elif menu == "💬 플리 커뮤니티":
     st.subheader("💬 플리 자유 게시판")
-    st.link_button("✍️ 의견 남기러 가기 (구글 시트)", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit?gid=881882748#gid=881882748")
+    with st.form("comm_form", clear_on_submit=True):
+        c_nick = st.text_input("닉네임")
+        c_msg = st.text_area("내용")
+        if st.form_submit_button("메시지 남기기"):
+            existing_comm = conn.read(worksheet="comments", usecols=list(range(3)))
+            new_comm = pd.DataFrame([{"nickname": c_nick, "comment": c_msg, "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M')}])
+            conn.update(worksheet="comments", data=pd.concat([existing_comm, new_comm], ignore_index=True))
+            st.success("메시지가 등록되었습니다!")
+
     try:
-        comm_df = pd.read_csv(COMM_URL)
-        for _, row in comm_df.iloc[::-1].iterrows():
-            st.markdown(f"""<div class="comment-box"><span class="timestamp">{row['timestamp']}</span><div class="nickname">👤 {row['nickname']}</div><div class="comment-text">{row['comment']}</div></div>""", unsafe_allow_html=True)
-    except: st.info("첫 의견을 남겨보세요!")
+        comms = conn.read(worksheet="comments")
+        for _, row in comms.iloc[::-1].iterrows():
+            st.info(f"👤 {row['nickname']} ({row['timestamp']})\n\n{row['comment']}")
+    except: st.info("첫 메시지를 기다리고 있습니다. 💙")
