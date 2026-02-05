@@ -80,7 +80,7 @@ with st.sidebar:
     st.markdown("### 📢 공지사항")
     st.caption("플리들이 직접 관리하는 실시간 대시보드입니다. 허위 정보 기재 시 삭제될 수 있습니다.")
 
-st.markdown(f"<h1 class='main-title'>PLAVE PLLI TRACKER</h1>", unsafe_allow_html=True)
+st.markdown(f"<h1 class='main-title'>PLAVE PLLI 투표정보</h1>", unsafe_allow_html=True)
 
 # --- [섹션 1: 투표/광고 보드] ---
 if menu == "📊 투표/광고 보드":
