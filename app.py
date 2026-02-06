@@ -1,100 +1,140 @@
 import streamlit as st
 import pandas as pd
 import pytz
+import requests
+from bs4 import BeautifulSoup
 from datetime import datetime
 import re
-from urllib.parse import urlparse
 from streamlit_gsheets import GSheetsConnection
-import streamlit.components.v1 as components
 
 # --- [0. 설정 정보] ---
 SHEET_ID = "1nf0XEDSj5kc0k29pWKaCa345aUG0-3RmofWqd4bRZ9M"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit"
-ADMIN_PASSWORD = "plave123"  # 관리자 비밀번호
+ADMIN_PASSWORD = "plave123"
+PLLI_LOGO = "https://pbs.twimg.com/profile_images/1982462665361330176/xHkk84gA.jpg"
 
 # 1. 페이지 설정
-st.set_page_config(page_title="PLAVE PLLI 투표정보", page_icon="💙💜🩷❤️🖤", layout="wide")
+st.set_page_config(page_title="PLAVE PLLI CONNECT", page_icon="💙🩷", layout="wide")
 
 # 2. 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 3. 디자인 CSS (간격 및 가독성 최적화)
-st.markdown("""
+# 3. 디자인 CSS (색상 대비 개선 및 네온 효과)
+st.markdown(f"""
     <style>
-    .stApp { background-color: #0E1117; color: #FFFFFF; font-family: 'Pretendard', sans-serif; }
-    section[data-testid="stSidebar"] { background-color: #161B22 !important; border-right: 1px solid #30363D; }
-    div[data-testid="stSidebarUserContent"] label { 
-        background-color: #21262D; border-radius: 12px !important; color: #C9D1D9 !important; 
-        padding: 15px 20px !important; margin-bottom: 15px !important; 
-    }
-    div[data-testid="stSidebarUserContent"] div[aria-checked="true"] label { background-color: #A29BFE !important; color: #000000 !important; font-weight: bold !important; }
-    .main-title { color: #FFFFFF; text-shadow: 0px 0px 15px rgba(162, 155, 254, 0.6); text-align: center; font-size: 2.5rem; font-weight: 800; margin-bottom: 40px; }
-    .tweet-card { background-color: #1E2330; border-radius: 16px; padding: 24px; margin-bottom: 35px !important; border-left: 5px solid #3E4556; transition: transform 0.2s; }
-    .radio-spacer { margin-top: 25px; margin-bottom: 55px; border-bottom: 1px solid #30363D; padding-bottom: 30px; }
-    .stElementContainer { margin-bottom: 25px !important; }
-    .category-tag { padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; }
-    .d-day-tag { float: right; background-color: #FF5E57; color: white; padding: 4px 14px; border-radius: 50px; font-size: 0.9rem; font-weight: 800; }
-    .radio-box { background-color: #2D3436; padding: 25px; border-radius: 16px; border-left: 5px solid #FFEAA7; margin-bottom: 40px; }
+    /* 기본 배경 및 글자색 강제 설정 */
+    .stApp {{ background-color: #0E1117; color: #FFFFFF !important; font-family: 'Pretendard', sans-serif; }}
+    h1, h2, h3, h4, p, span, label, div {{ color: #FFFFFF !important; }}
+    
+    /* [네온 효과] 메인 로고 Glow */
+    .glowing-logo {{
+        border-radius: 50%;
+        box-shadow: 0 0 15px #A2D2FF, 0 0 30px #FFB7D5;
+        margin: 10px auto;
+        display: block;
+    }}
+
+    /* [컬러 추출] 버튼 강조색 (핑크/블루 그라데이션) */
+    div.stButton > button {{
+        background: linear-gradient(45deg, #A2D2FF, #FFB7D5) !important;
+        color: #000000 !important;
+        font-weight: bold !important;
+        border: none !important;
+        border-radius: 10px !important;
+        box-shadow: 0 4px 15px rgba(162, 210, 255, 0.4) !important;
+        transition: 0.3s !important;
+        width: 100%;
+    }}
+    div.stButton > button:hover {{
+        transform: scale(1.02) !important;
+        box-shadow: 0 0 20px rgba(255, 183, 213, 0.6) !important;
+    }}
+
+    /* 입력창 디자인 */
+    input, textarea, select {{
+        background-color: #21262D !important;
+        color: #FFFFFF !important;
+        border: 1px solid #30363D !important;
+    }}
+
+    /* 투표 정보 카드 디자인 */
+    .tweet-card {{ 
+        background-color: #1E2330; 
+        border-radius: 16px; 
+        padding: 24px; 
+        margin-bottom: 35px !important; 
+        border-left: 6px solid #A2D2FF;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }}
+    
+    .category-tag {{ 
+        padding: 4px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 800; color: #000000 !important; 
+    }}
+    
+    .d-day-tag {{ 
+        float: right; background-color: #FF5E57; color: white !important; padding: 4px 14px; border-radius: 50px; font-size: 0.9rem; font-weight: 800; 
+    }}
+
+    .main-title {{
+        text-align: center; font-size: 2.8rem; font-weight: 800;
+        background: linear-gradient(to right, #A2D2FF, #FFB7D5);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        text-shadow: 0 0 20px rgba(162, 210, 255, 0.4);
+        margin-bottom: 40px;
+    }}
+
+    .radio-spacer {{ margin-bottom: 55px; border-bottom: 1px solid #30363D; padding-bottom: 30px; }}
     </style>
     """, unsafe_allow_html=True)
+
+# --- [4. 유틸리티 함수] ---
+
+# 1) 링크 자동 분류 함수 (음방/일반 분리)
+def auto_categorize(url):
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers, timeout=3)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        title = soup.title.string if soup.title else ""
+        url_l = url.lower()
+        
+        if any(k in title or k in url_l for k in ["M카", "Mcountdown", "뮤직뱅크", "음악중심", "인기가요", "더쇼", "쇼챔"]): return "🎙️ 음악방송"
+        if any(k in title or k in url_l for k in ["시상식", "Awards", "ASEA", "SMA", "MAMA", "포도알"]): return "🏆 시상식"
+        if any(k in title or k in url_l for k in ["생일", "Birthday", "AD", "광고"]): return "🎂 생일/광고"
+        if any(k in url_l for k in ["sbs.co.kr", "kbs.co.kr", "imbc.com", "forms"]): return "📻 라디오 신청"
+        return "🗳️ 일반 투표"
+    except: return "🗳️ 일반 투표"
+
+# 2) 앱 아이콘 추출 함수 (플리 로고 기본 적용)
+def get_app_icon_html(url):
+    if not url: return f'<img src="{PLLI_LOGO}" style="width:24px; border-radius:50%; margin-right:8px;">'
+    icons = {"podoal": "🍇", "fanplus": "🏆", "idolchamp": "🎙️", "duckad": "🦆", "mnet": "🌟", "mubeat": "💓"}
+    for key, icon in icons.items():
+        if key in url.lower(): return f"<span style='font-size:1.2rem; margin-right:8px;'>{icon}</span>"
+    return f'<img src="{PLLI_LOGO}" style="width:24px; border-radius:50%; vertical-align:middle; margin-right:8px; box-shadow: 0 0 8px #A2D2FF;">'
 
 # 이미지 클릭 다이얼로그
 @st.dialog("이미지 크게 보기", width="large")
 def show_image(img_url):
     st.image(img_url, use_container_width=True)
 
-# 데이터 처리 함수
-def process_data(df):
-    processed_rows = []
-    for _, row in df.iterrows():
-        raw_text = str(row['text']) if pd.notna(row['text']) else ""
-        m_color = "#3E4556"
-        if any(k in raw_text for k in ["노아", "NOAH", "💜"]): m_color = "#C294FB"
-        elif any(k in raw_text for k in ["하민", "HAMIN", "🖤", "💚"]): m_color = "#B2EBC1"
-        elif any(k in raw_text for k in ["예준", "YEJUN", "💙"]): m_color = "#A2D2FF"
-        elif any(k in raw_text for k in ["밤비", "BAMBY", "🩷"]): m_color = "#FFB7D5"
-        elif any(k in raw_text for k in ["은호", "EUNHO", "❤️"]): m_color = "#FF8E8E"
+# --- [5. 메인 로직] ---
 
-        found_links = re.findall(r'(https?://\S+)', raw_text)
-        final_link = row['link'] if pd.notna(row['link']) and str(row['link']).strip() != "" else (found_links[0] if found_links else None)
-        
-        def get_dday(date_str):
-            try:
-                if pd.isna(date_str) or str(date_str).strip() == "": return "상시", 999, False
-                end_date = datetime.strptime(str(date_str).strip(), '%Y-%m-%d').date()
-                delta = (end_date - datetime.now().date()).days
-                return (f"D-{delta}", delta, False) if delta >= 0 else ("종료", delta, True)
-            except: return "정보없음", 999, False
-
-        d_label, d_val, is_exp = get_dday(row['end_date'])
-        processed_rows.append({
-            'category': row['category'] if pd.notna(row['category']) else "🗳️ 일반",
-            'importance': row['importance'] if pd.notna(row['importance']) else 1,
-            'text': raw_text.split('http')[0].strip(),
-            'start_date': row['start_date'], 'end_date': row['end_date'],
-            'link': final_link, 'images': row['images'],
-            'd_day_label': d_label, 'd_day_val': d_val, 'is_expired': is_exp, 'color': m_color
-        })
-    return pd.DataFrame(processed_rows)
-
-# 사이드바
 with st.sidebar:
-    st.markdown("<h2 style='text-align:center; color:#A29BFE;'>PLLI CONNECT</h2>", unsafe_allow_html=True)
-    menu = st.radio("메뉴 이동", ["📊 투표/광고 보드", "📻 라디오 상시 신청", "💡 투표 팁 & 가이드", "💬 플리 커뮤니티"], label_visibility="collapsed")
+    st.markdown(f'<img src="{PLLI_LOGO}" class="glowing-logo" width="120">', unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center; font-weight:800; margin-top:10px;'>PLLI CONNECT</div>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    menu = st.radio("MENU", ["📊 투표 보드", "📻 라디오 신청", "💡 가이드", "💬 커뮤니티"], label_visibility="collapsed")
 
-st.markdown(f"<h1 class='main-title'>PLAVE PLLI 투표정보</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-title'>PLLI CONNECT</h1>", unsafe_allow_html=True)
 
-# --- [메뉴 1: 투표/광고 보드] ---
-if menu == "📊 투표/광고 보드":
+if menu == "📊 투표 보드":
     try:
         raw_df = conn.read(spreadsheet=SHEET_URL, worksheet="Sheet1")
         if not raw_df.empty:
-            df = process_data(raw_df)
             today_str = datetime.now().strftime('%Y-%m-%d')
-            today_deadlines = df[df['end_date'] == today_str]
-            if not today_deadlines.empty:
-                st.error(f"⚠️ **오늘 마감!** ({len(today_deadlines)}건): {', '.join(today_deadlines['text'].str[:10] + '...')}")
-
+            
+            # 관리자 도구
             with st.expander("🛠️ 관리자 도구 (데이터 관리)"):
                 admin_pw = st.text_input("관리자 비밀번호", type="password")
                 if admin_pw == ADMIN_PASSWORD:
@@ -104,91 +144,77 @@ if menu == "📊 투표/광고 보드":
                         st.success("반영되었습니다!")
                         st.rerun()
 
-            with st.expander("➕ 새로운 투표 정보 등록하기"):
+            # 새로운 투표 정보 등록 (자동 분류 적용)
+            with st.expander("➕ 새로운 정보 등록 (링크 자동 분류)"):
                 with st.form("vote_form", clear_on_submit=True):
-                    f_cat = st.selectbox("분류", ["🗳️ 일반/음방", "🏆 시상식", "🎂 생일", "🎨 광고시안"])
-                    f_text = st.text_area("내용 (문구나 링크)")
+                    f_url = st.text_input("참여 링크")
+                    f_text = st.text_area("내용 (문구)")
                     f_end = st.date_input("종료 날짜")
-                    f_img = st.text_input("이미지 주소")
-                    if st.form_submit_button("등록하기 💙"):
-                        new_data = pd.DataFrame([{"category": f_cat, "importance": 1, "text": f_text, "start_date": today_str, "end_date": f_end.strftime('%Y-%m-%d'), "images": f_img}])
-                        conn.update(spreadsheet=SHEET_URL, worksheet="Sheet1", data=pd.concat([raw_df, new_data], ignore_index=True))
-                        st.success("등록되었습니다!")
+                    f_img = st.text_input("이미지 주소 (선택)")
+                    if st.form_submit_button("등록하기 🚀"):
+                        suggested = auto_categorize(f_url)
+                        new_row = pd.DataFrame([{"category": suggested, "text": f_text, "end_date": f_end.strftime('%Y-%m-%d'), "link": f_url, "images": f_img}])
+                        conn.update(spreadsheet=SHEET_URL, worksheet="Sheet1", data=pd.concat([raw_df, new_row], ignore_index=True))
+                        st.success(f"'{suggested}' 카테고리로 등록되었습니다!")
                         st.rerun()
 
+            # 고정 우선순위 정렬: 시상식(1) > 음악방송(2) > 생일(3) > 일반(4)
+            priority_map = {"🏆 시상식": 1, "🎙️ 음악방송": 2, "🎂 생일/광고": 3, "🗳️ 일반 투표": 4, "📻 라디오 신청": 5}
+            raw_df['priority'] = raw_df['category'].map(priority_map).fillna(10)
+            df_sorted = raw_df.sort_values(by=['priority', 'end_date'])
+
+            # 카드 출력
             cols = st.columns(2)
-            for idx, row in df.sort_values(by=['is_expired', 'd_day_val']).reset_index().iterrows():
+            for idx, row in df_sorted.reset_index().iterrows():
                 with cols[idx % 2]:
-                    st.markdown(f"""<div class="tweet-card" style="border-left-color:{row['color']}; opacity: {'0.6' if row['is_expired'] else '1'};">
-                        <span class="category-tag" style="background-color:{row['color']}; color:#000;">{row['category']}</span>
-                        <span class="d-day-tag">{row['d_day_label']}</span>
-                        <div style="margin-top:10px; font-weight:bold; font-size:1.1rem;">{row['text']}</div>
-                    </div>""", unsafe_allow_html=True)
-                    if pd.notna(row['images']) and str(row['images']).strip() != "":
+                    icon = get_app_icon_html(row['link'])
+                    # 카테고리별 포인트 컬러 (생일은 핑크, 나머지는 블루)
+                    b_color = "#FFB7D5" if row['category'] == "🎂 생일/광고" else "#A2D2FF"
+                    
+                    # D-Day 계산
+                    try:
+                        target = datetime.strptime(str(row['end_date']), '%Y-%m-%d').date()
+                        days_left = (target - datetime.now().date()).days
+                        d_day_str = f"D-{days_left}" if days_left >= 0 else "종료"
+                    except: d_day_str = "상시"
+
+                    st.markdown(f"""
+                        <div class="tweet-card" style="border-left-color:{b_color};">
+                            <div style="margin-bottom: 15px;">
+                                {icon} <span class="category-tag" style="background-color:{b_color};">{row['category']}</span>
+                                <span class="d-day-tag">{d_day_str}</span>
+                            </div>
+                            <div style="font-size:1.1rem; font-weight:700;">{row['text']}</div>
+                            <a href="{row['link']}" target="_blank" style="text-decoration:none;">
+                                <div style="margin-top:15px; color:#A2D2FF; font-size:0.9rem; font-weight:bold;">🔗 참여 링크 바로가기</div>
+                            </a>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    # 이미지 표시
+                    if pd.notna(row.get('images')) and str(row['images']).strip() != "":
                         st.image(row['images'], use_container_width=True)
                         if st.button("🖼️ 이미지 크게 보기", key=f"img_{idx}"): show_image(row['images'])
-                    if row['link']: st.link_button("🔗 참여 링크 이동", row['link'], use_container_width=True)
     except Exception as e: st.error(f"데이터 로드 실패: {e}")
 
-# --- [메뉴 2: 라디오 상시 신청] ---
-elif menu == "📻 라디오 상시 신청":
-    st.markdown('<div class="radio-box"><h2>📻 라디오 신청 가이드</h2><p>국내외 라디오에 플레이브의 음악을 들려주세요! 💙</p></div>', unsafe_allow_html=True)
+elif menu == "📻 라디오 신청":
+    st.markdown("### 🕒 글로벌 신청 시간 체크")
+    t1, t2 = st.columns(2)
+    t1.metric("🇰🇷 서울", datetime.now(pytz.timezone('Asia/Seoul')).strftime('%m/%d %H:%M'))
+    t2.metric("🇺🇸 뉴욕", datetime.now(pytz.timezone('America/New_York')).strftime('%m/%d %H:%M'), delta="-14h (시차)")
+    st.divider()
     
-    # 1. KBS 섹션
     st.markdown('<div class="radio-spacer">', unsafe_allow_html=True)
-    with st.expander("💙 KBS 쿨FM (2FM) 신청 게시판 열기"):
-        k_cols = st.columns(2)
-        with k_cols[0]:
-            st.link_button("💋 키라더 (일요일)", "https://program.kbs.co.kr/2fm/radio/hanhaekiss/mobile/board.html?smenu=ba2c4f&bbs_loc=R2025-0082-03-761603,list,none,1,0", use_container_width=True)
-            st.link_button("🎮 놀초대 [화/목]", "https://program.kbs.co.kr/2fm/radio/hanhaekiss/mobile/board.html?smenu=66d014&bbs_loc=R2025-0082-03-789244,list,none,1,0", use_container_width=True)
-        with k_cols[1]:
-            st.link_button("🎧 볼륨을 높여요", "https://program.kbs.co.kr/2fm/radio/hyojung_volume/mobile/board.html", use_container_width=True)
-            st.link_button("☀️ 이은지의 가요광장", "https://program.kbs.co.kr/2fm/radio/ejgayo/mobile/board.html", use_container_width=True)
+    with st.expander("💙 KBS 쿨FM 신청 게시판"):
+        st.link_button("키라더 (일요일)", "https://program.kbs.co.kr/2fm/radio/hanhaekiss/mobile/board.html")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 2. SBS 섹션
-    st.markdown('<div class="radio-spacer">', unsafe_allow_html=True)
-    with st.expander("🧡 SBS 파워FM 신청 게시판 열기"):
-        s_cols = st.columns(2)
-        with s_cols[0]:
-            st.link_button("🎙️ 두시탈출 컬투쇼", "https://m.programs.sbs.co.kr/radio/cultwoshow/boards/58047", use_container_width=True)
-            st.link_button("🌟 웬디의 영스트리트", "https://m.programs.sbs.co.kr/radio/wendy0s/boards/69691", use_container_width=True)
-        with s_cols[1]:
-            st.link_button("🎸 박소현의 러브게임", "https://m.programs.sbs.co.kr/radio/lovegame/boards/57679", use_container_width=True)
-            st.link_button("⚽ 배성재의 텐", "https://m.programs.sbs.co.kr/radio/ten/boards/57950", use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.expander("🌐 해외 라디오 실시간 요청"):
+        st.link_button("🍎 NYC 주말 실시간 요청", "https://docs.google.com/forms/d/e/1FAIpQLSfyVYf-rss5jZ0uA6RHIkb-Im180whM7I_U98HLnpu3w1C4cw/viewform")
+    
+    st.success("### 📱 문자 신청 번호: KBS #8910 / SBS #1077 / MBC #8000")
 
-    # 3. 해외 라디오 섹션 (시차 위젯 포함)
-    st.markdown('<div class="radio-spacer">', unsafe_allow_html=True)
-    with st.expander("🌐 해외 라디오 실시간 요청 (NYC / Global)"):
-        st.markdown("#### 🕒 Global Time Check")
-        t_col1, t_col2 = st.columns(2)
-        tz_kr = pytz.timezone('Asia/Seoul')
-        now_kr = datetime.now(tz_kr).strftime('%m/%d %H:%M')
-        t_col1.metric("🇰🇷 KOREA (Seoul)", now_kr)
-        
-        tz_ny = pytz.timezone('America/New_York')
-        now_ny = datetime.now(tz_ny).strftime('%m/%d %H:%M')
-        t_col2.metric("🇺🇸 USA (New York)", now_ny, delta="-14h (시차)", delta_color="inverse")
-        
-        st.divider()
-        st.info("💡 **영문 요청 문구:** `I would like to request [Song Title] by PLAVE`")
-        h_cols = st.columns(2)
-        with h_cols[0]:
-            st.markdown("#### 🇺🇸 USA / NYC")
-            st.link_button("🍎 NYC 주말 실시간 요청", "https://docs.google.com/forms/d/e/1FAIpQLSfyVYf-rss5jZ0uA6RHIkb-Im180whM7I_U98HLnpu3w1C4cw/viewform", use_container_width=True)
-            st.link_button("🍎 NYC 토요일 방송 요청", "https://docs.google.com/forms/d/e/1FAIpQLSe1yaIX9vTlkW8uVFqkF4ElCrsJ4R131b5lOQx7PlmwzYIaPg/alreadyresponded", use_container_width=True)
-            st.link_button("📻 WYYT 106.3 Request", "http://wyyt1063.com/request", use_container_width=True)
-        with h_cols[1]:
-            st.markdown("#### 🌍 Global / Japan")
-            st.link_button("🇺🇸 Only Hits (Contact)", "https://onlyhit.us/en/contact/", use_container_width=True)
-            st.link_button("🇨🇦 Hot 106 (Canada)", "http://hot106.cgrmedia.ca/request", use_container_width=True)
-            st.link_button("🇯🇵 M-ON! TV/Radio", "http://m-on.jp/request/", use_container_width=True)
-            st.link_button("📻 ECA Radio Request", "https://ecaradio2.weebly.com/song-requests.html", use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+elif menu == "💡 가이드":
+    st.info("플레이브 투표 앱 가이드 정보가 업데이트될 예정입니다. 💙🩷")
 
-    st.success("### 📱 국내 문자 신청 번호\n- **KBS**: #8910 / **SBS**: #1077 / **MBC**: #8000")
-
-# --- [기타 메뉴] ---
-elif menu == "💡 투표 팁 & 가이드": st.write("투표 앱 가이드 정보가 업데이트될 예정입니다.")
-elif menu == "💬 플리 커뮤니티": st.write("플리님들의 소중한 한마디를 남겨주세요. 💙💜🩷❤️🖤 ")
+elif menu == "💬 플리 커뮤니티":
+    st.write("플리님들의 소중한 한마디를 남겨주세요. 💙💜🩷❤️🖤")
