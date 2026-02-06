@@ -1,3 +1,4 @@
-pandas
-streamlit>=1.31.0
+beautifulsoup4
+requests
 st-gsheets-connection
+pytz
